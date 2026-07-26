@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Our Album</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔒</text></svg>" />
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<main id="lock-screen" class="screen">
+  <form id="lock-form" autocomplete="off">
+    <h1>A private album</h1>
+    <p class="hint">Enter the keyword to unlock it.</p>
+    <input type="password" id="keyword-input" placeholder="Keyword" autofocus required />
+    <button type="submit" id="unlock-btn">Unlock</button>
+    <p id="lock-error" class="error" hidden></p>
+  </form>
+</main>
+
+<main id="gallery-screen" class="screen" hidden>
+  <header id="gallery-header">
+    <h1 id="album-title"></h1>
+    <p id="album-message"></p>
+  </header>
+  <section id="grid" class="grid"></section>
+</main>
+
+<div id="lightbox" class="lightbox" hidden>
+  <button id="lightbox-close" class="lightbox-btn lightbox-close" aria-label="Close">&times;</button>
+  <button id="lightbox-prev" class="lightbox-btn lightbox-prev" aria-label="Previous">&#8249;</button>
+  <button id="lightbox-next" class="lightbox-btn lightbox-next" aria-label="Next">&#8250;</button>
+  <figure>
+    <img id="lightbox-img" alt="" />
+    <figcaption>
+      <span id="lightbox-caption"></span>
+      <span id="lightbox-date"></span>
+    </figcaption>
+  </figure>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
