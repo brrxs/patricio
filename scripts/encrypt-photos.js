@@ -132,11 +132,32 @@ function validateContent(content) {
       }
     });
   }
+  if (content.videos !== undefined && content.videos !== null) {
+    if (!Array.isArray(content.videos)) {
+      errors.push('"videos" must be an array or omitted');
+    } else {
+      content.videos.forEach((v, i) => {
+        if (typeof v.file !== 'string' || !v.file) {
+          errors.push(`videos[${i}]: "file" must be a non-empty string`);
+        }
+        if (typeof v.caption !== 'string') {
+          errors.push(`videos[${i}]: "caption" must be a string (use "" for none)`);
+        }
+        if (v.date !== undefined && v.date !== null && typeof v.date !== 'string') {
+          errors.push(`videos[${i}]: "date" must be a string or omitted`);
+        }
+        if (v.group !== undefined && v.group !== null && typeof v.group !== 'string') {
+          errors.push(`videos[${i}]: "group" must be a string or omitted`);
+        }
+      });
+    }
+  }
   return errors;
 }
 
 function findMissingFiles(content) {
   const files = content.photos.map((p) => p.file);
+  if (content.videos) files.push(...content.videos.map((v) => v.file));
   if (content.intro && content.intro.pdf) files.push(content.intro.pdf);
   return files
     .filter((file) => typeof file === 'string' && file)
@@ -263,6 +284,9 @@ async function main() {
   fs.rmSync(PHOTOS_DIR, { recursive: true, force: true });
   fs.mkdirSync(path.join(PHOTOS_DIR, 'thumbs'), { recursive: true });
   fs.mkdirSync(path.join(PHOTOS_DIR, 'full'), { recursive: true });
+  if (content.videos && content.videos.length > 0) {
+    fs.mkdirSync(path.join(PHOTOS_DIR, 'videos'), { recursive: true });
+  }
 
   const salt = webcrypto.getRandomValues(new Uint8Array(16));
   const key = await deriveKey(keyword, salt, ITERATIONS);
@@ -295,6 +319,21 @@ async function main() {
     console.log(`  encrypted ${i + 1}/${content.photos.length}: ${p.file}`);
   }
 
+  const manifestVideos = [];
+  const videos = content.videos || [];
+  for (let i = 0; i < videos.length; i++) {
+    const v = videos[i];
+    const filePath = path.join(SOURCE_DIR, v.file);
+    const buf = fs.readFileSync(filePath);
+    const date = v.date ?? null;
+
+    const videoEnc = await encryptBytes(key, buf);
+    fs.writeFileSync(path.join(PHOTOS_DIR, 'videos', `${i}.bin`), videoEnc);
+
+    manifestVideos.push({ id: i, caption: v.caption, date, group: v.group ?? null });
+    console.log(`  encrypted video ${i + 1}/${videos.length}: ${v.file}`);
+  }
+
   let introHasPdf = false;
   if (content.intro && content.intro.pdf) {
     const pdfBuf = fs.readFileSync(path.join(SOURCE_DIR, content.intro.pdf));
@@ -311,6 +350,7 @@ async function main() {
       ? { label: content.intro.label || 'Welcome', message: content.intro.message, hasPdf: introHasPdf }
       : null,
     photos: manifestPhotos,
+    videos: manifestVideos,
   };
   const manifestEnc = await encryptBytes(key, Buffer.from(JSON.stringify(manifest), 'utf8'));
   fs.writeFileSync(path.join(PHOTOS_DIR, 'manifest.bin'), manifestEnc);
@@ -327,7 +367,8 @@ async function main() {
   };
   fs.writeFileSync(path.join(PHOTOS_DIR, 'params.json'), JSON.stringify(params, null, 2) + '\n');
 
-  console.log(`\nDone. Encrypted ${content.photos.length} photo(s) into photos/.`);
+  const videoSuffix = videos.length > 0 ? ` and ${videos.length} video(s)` : '';
+  console.log(`\nDone. Encrypted ${content.photos.length} photo(s)${videoSuffix} into photos/.`);
   console.log('Only photos/ (not source/) should ever be committed.');
   console.log('Re-running this script — even with the same keyword — changes every ciphertext byte');
   console.log('(fresh random salt and IVs each time). That is expected, not a bug.');

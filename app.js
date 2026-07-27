@@ -146,6 +146,15 @@ function buildTabs(manifest) {
   for (const [name, photos] of byName) {
     tabs.push({ name, isHub: false, photos });
   }
+  const videosByName = new Map();
+  for (const video of manifest.videos || []) {
+    const name = video.group || 'Videos';
+    if (!videosByName.has(name)) videosByName.set(name, []);
+    videosByName.get(name).push(video);
+  }
+  for (const [name, videos] of videosByName) {
+    tabs.push({ name, isHub: false, isVideo: true, photos: [], videos });
+  }
   return tabs;
 }
 
@@ -200,6 +209,58 @@ function buildHubPanel(group) {
   return section;
 }
 
+function buildVideoPanel(group) {
+  const section = document.createElement('section');
+  section.className = 'video-panel';
+
+  group.videos.forEach((video) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'video-item';
+
+    const status = document.createElement('p');
+    status.className = 'video-status';
+    status.textContent = 'Loading…';
+    wrap.appendChild(status);
+
+    const videoEl = document.createElement('video');
+    videoEl.className = 'video-player';
+    videoEl.controls = true;
+    videoEl.hidden = true;
+    wrap.appendChild(videoEl);
+
+    if (video.caption) {
+      const caption = document.createElement('div');
+      caption.className = 'video-caption';
+      caption.textContent = video.caption;
+      wrap.appendChild(caption);
+    }
+
+    section.appendChild(wrap);
+    video.statusEl = status;
+    video.videoEl = videoEl;
+  });
+
+  return section;
+}
+
+// Videos are decrypted on demand (only once their tab is first selected),
+// since they're far larger than a thumbnail or the intro PDF and downloading
+// one eagerly on every gallery load would waste bandwidth for no reason.
+async function loadGroupVideos(group) {
+  group.videosLoaded = true;
+  for (const video of group.videos) {
+    try {
+      const url = await fetchAndDecryptBlob(derivedKey, `photos/videos/${video.id}.bin`, 'video/mp4');
+      video.statusEl.hidden = true;
+      video.videoEl.src = url;
+      video.videoEl.hidden = false;
+    } catch (err) {
+      console.error('video failed', video.id, err);
+      video.statusEl.textContent = "Couldn't load this video.";
+    }
+  }
+}
+
 function showGallery() {
   lockScreen.hidden = true;
   galleryScreen.hidden = false;
@@ -226,6 +287,14 @@ function showGallery() {
 
     if (group.isHub) {
       const section = buildHubPanel(group);
+      section.hidden = groupIndex !== 0;
+      gridContainerEl.appendChild(section);
+      group.sectionEl = section;
+      return;
+    }
+
+    if (group.isVideo) {
+      const section = buildVideoPanel(group);
       section.hidden = groupIndex !== 0;
       gridContainerEl.appendChild(section);
       group.sectionEl = section;
@@ -278,7 +347,10 @@ function selectGroup(index) {
     const active = i === index;
     group.sectionEl.hidden = !active;
     group.tabBtn.classList.toggle('active', active);
-    if (active) activeGroupPhotos = group.photos;
+    if (active) {
+      activeGroupPhotos = group.photos;
+      if (group.isVideo && !group.videosLoaded) loadGroupVideos(group);
+    }
   });
 }
 
