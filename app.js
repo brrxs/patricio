@@ -13,11 +13,6 @@ const keywordInput = document.getElementById('keyword-input');
 const unlockBtn = document.getElementById('unlock-btn');
 const lockError = document.getElementById('lock-error');
 
-const introScreen = document.getElementById('intro-screen');
-const introMessageEl = document.getElementById('intro-message');
-const introPdfLink = document.getElementById('intro-pdf-link');
-const introContinueBtn = document.getElementById('intro-continue-btn');
-
 const albumTitleEl = document.getElementById('album-title');
 const albumMessageEl = document.getElementById('album-message');
 const tabsEl = document.getElementById('tabs');
@@ -125,12 +120,7 @@ lockForm.addEventListener('submit', async (e) => {
 
     derivedKey = key;
     manifest = JSON.parse(new TextDecoder().decode(manifestBytes));
-
-    if (manifest.intro && (manifest.intro.message || manifest.intro.hasPdf)) {
-      showIntro();
-    } else {
-      showGallery();
-    }
+    showGallery();
   } catch (err) {
     console.error(err);
     lockError.textContent = "Couldn't load the album. Check your connection and try again.";
@@ -140,47 +130,74 @@ lockForm.addEventListener('submit', async (e) => {
   }
 });
 
-let introPdfUrl = null;
-
-function showIntro() {
-  lockScreen.hidden = true;
-  introScreen.hidden = false;
-
-  introMessageEl.textContent = manifest.intro.message || '';
-  introPdfLink.hidden = !manifest.intro.hasPdf;
-}
-
-introPdfLink.addEventListener('click', async (e) => {
-  e.preventDefault();
-  if (introPdfUrl) {
-    window.open(introPdfUrl, '_blank');
-    return;
+// The intro (if present) becomes the first tab — a "hub" pane with a
+// message and an optional PDF, rather than a photo grid.
+function buildTabs(manifest) {
+  const tabs = [];
+  if (manifest.intro && (manifest.intro.message || manifest.intro.hasPdf)) {
+    tabs.push({ name: manifest.intro.label || 'Welcome', isHub: true, intro: manifest.intro, photos: [] });
   }
-  const originalText = introPdfLink.textContent;
-  introPdfLink.textContent = 'Loading…';
-  try {
-    introPdfUrl = await fetchAndDecryptBlob(derivedKey, 'photos/intro.pdf.bin', 'application/pdf');
-    introPdfLink.textContent = originalText;
-    window.open(introPdfUrl, '_blank');
-  } catch (err) {
-    console.error('intro pdf failed', err);
-    introPdfLink.textContent = "Couldn't load — try again";
-  }
-});
-
-introContinueBtn.addEventListener('click', () => {
-  introScreen.hidden = true;
-  showGallery();
-});
-
-function groupPhotos(photos) {
   const byName = new Map();
-  for (const photo of photos) {
+  for (const photo of manifest.photos) {
     const name = photo.group || 'Photos';
     if (!byName.has(name)) byName.set(name, []);
     byName.get(name).push(photo);
   }
-  return Array.from(byName, ([name, groupPhotos]) => ({ name, photos: groupPhotos }));
+  for (const [name, photos] of byName) {
+    tabs.push({ name, isHub: false, photos });
+  }
+  return tabs;
+}
+
+function buildHubPanel(group) {
+  const section = document.createElement('section');
+  section.className = 'hub-panel';
+
+  const message = document.createElement('p');
+  message.className = 'hub-message';
+  message.textContent = group.intro.message || '';
+  section.appendChild(message);
+
+  if (group.intro.hasPdf) {
+    const pdfWrap = document.createElement('div');
+    pdfWrap.className = 'hub-pdf';
+
+    const status = document.createElement('p');
+    status.className = 'hub-pdf-status';
+    status.textContent = 'Loading your letter…';
+    pdfWrap.appendChild(status);
+
+    const frame = document.createElement('iframe');
+    frame.className = 'hub-pdf-frame';
+    frame.title = 'Letter';
+    frame.hidden = true;
+    pdfWrap.appendChild(frame);
+
+    const openLink = document.createElement('a');
+    openLink.className = 'hub-pdf-open';
+    openLink.target = '_blank';
+    openLink.rel = 'noopener';
+    openLink.textContent = 'Open in a new tab ↗';
+    openLink.hidden = true;
+    pdfWrap.appendChild(openLink);
+
+    section.appendChild(pdfWrap);
+
+    fetchAndDecryptBlob(derivedKey, 'photos/intro.pdf.bin', 'application/pdf')
+      .then((url) => {
+        status.hidden = true;
+        frame.src = url;
+        frame.hidden = false;
+        openLink.href = url;
+        openLink.hidden = false;
+      })
+      .catch((err) => {
+        console.error('intro pdf failed', err);
+        status.textContent = "Couldn't load the letter.";
+      });
+  }
+
+  return section;
 }
 
 function showGallery() {
@@ -190,7 +207,7 @@ function showGallery() {
   albumTitleEl.textContent = manifest.title || '';
   albumMessageEl.textContent = manifest.message || '';
 
-  groups = groupPhotos(manifest.photos);
+  groups = buildTabs(manifest);
 
   tabsEl.innerHTML = '';
   gridContainerEl.innerHTML = '';
@@ -206,6 +223,14 @@ function showGallery() {
     tabBtn.addEventListener('click', () => selectGroup(groupIndex));
     tabsEl.appendChild(tabBtn);
     group.tabBtn = tabBtn;
+
+    if (group.isHub) {
+      const section = buildHubPanel(group);
+      section.hidden = groupIndex !== 0;
+      gridContainerEl.appendChild(section);
+      group.sectionEl = section;
+      return;
+    }
 
     const section = document.createElement('section');
     section.className = 'grid';

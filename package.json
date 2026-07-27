@@ -10,6 +10,7 @@
     "encrypt": "node scripts/encrypt-photos.js"
   },
   "dependencies": {
+    "exifr": "^7.1.3",
     "heic-convert": "^2.1.0",
     "sharp": "^0.33.5"
   }

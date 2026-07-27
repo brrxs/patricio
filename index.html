@@ -3,15 +3,15 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Our Album</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔒</text></svg>" />
+<title>Top 3 momentos juntos 2: el retorno</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐧</text></svg>" />
 <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
 <main id="lock-screen" class="screen">
   <form id="lock-form" autocomplete="off">
-    <h1>A private album</h1>
+    <h1>Een privéalbum</h1>
     <p class="hint">Enter the keyword to unlock it.</p>
     <input type="password" id="keyword-input" placeholder="Keyword" autofocus required />
     <button type="submit" id="unlock-btn">Unlock</button>
@@ -19,22 +19,14 @@
   </form>
 </main>
 
-<main id="intro-screen" class="screen" hidden>
-  <div id="intro-box">
-    <p id="intro-message"></p>
-    <div id="intro-actions">
-      <a id="intro-pdf-link" href="#" hidden>Open the letter</a>
-      <button id="intro-continue-btn" type="button">Continue to the album</button>
-    </div>
-  </div>
-</main>
-
 <main id="gallery-screen" class="screen" hidden>
   <header id="gallery-header">
-    <h1 id="album-title"></h1>
+    <div id="header-top">
+      <h1 id="album-title"></h1>
+      <nav id="tabs" class="tabs"></nav>
+    </div>
     <p id="album-message"></p>
   </header>
-  <nav id="tabs" class="tabs"></nav>
   <div id="grid-container"></div>
 </main>
 

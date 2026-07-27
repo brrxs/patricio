@@ -9,6 +9,7 @@ const path = require('node:path');
 const { webcrypto } = require('node:crypto');
 const sharp = require('sharp');
 const heicConvert = require('heic-convert');
+const exifr = require('exifr');
 
 const HEIC_EXTENSIONS = new Set(['.heic', '.heif']);
 
@@ -21,6 +22,23 @@ async function loadImageBuffer(filePath) {
     return heicConvert({ buffer: buf, format: 'JPEG', quality: 0.95 });
   }
   return buf;
+}
+
+// Only used when content.json doesn't already give a photo an explicit
+// date — reads the original file (before any HEIC conversion, so the
+// EXIF block is still intact) rather than the re-encoded buffer.
+async function extractExifDate(filePath) {
+  try {
+    const data = await exifr.parse(filePath, { pick: ['DateTimeOriginal', 'CreateDate'] });
+    const date = data && (data.DateTimeOriginal || data.CreateDate);
+    if (!(date instanceof Date) || isNaN(date)) return null;
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  } catch {
+    return null;
+  }
 }
 
 const subtle = webcrypto.subtle;
@@ -86,6 +104,13 @@ function validateContent(content) {
         typeof content.intro.pdf !== 'string'
       ) {
         errors.push('"intro.pdf" must be a string or omitted');
+      }
+      if (
+        content.intro.label !== undefined &&
+        content.intro.label !== null &&
+        typeof content.intro.label !== 'string'
+      ) {
+        errors.push('"intro.label" must be a string or omitted');
       }
     }
   }
@@ -245,7 +270,9 @@ async function main() {
   const manifestPhotos = [];
   for (let i = 0; i < content.photos.length; i++) {
     const p = content.photos[i];
-    const buf = await loadImageBuffer(path.join(SOURCE_DIR, p.file));
+    const filePath = path.join(SOURCE_DIR, p.file);
+    const buf = await loadImageBuffer(filePath);
+    const date = p.date ?? (await extractExifDate(filePath));
 
     const thumbBuf = await sharp(buf)
       .rotate() // bake in the EXIF orientation — sharp strips metadata otherwise, losing it
@@ -264,7 +291,7 @@ async function main() {
     fs.writeFileSync(path.join(PHOTOS_DIR, 'thumbs', `${i}.bin`), thumbEnc);
     fs.writeFileSync(path.join(PHOTOS_DIR, 'full', `${i}.bin`), fullEnc);
 
-    manifestPhotos.push({ id: i, caption: p.caption, date: p.date ?? null, group: p.group ?? null });
+    manifestPhotos.push({ id: i, caption: p.caption, date, group: p.group ?? null });
     console.log(`  encrypted ${i + 1}/${content.photos.length}: ${p.file}`);
   }
 
@@ -280,7 +307,9 @@ async function main() {
   const manifest = {
     title: content.title,
     message: content.message,
-    intro: content.intro ? { message: content.intro.message, hasPdf: introHasPdf } : null,
+    intro: content.intro
+      ? { label: content.intro.label || 'Welcome', message: content.intro.message, hasPdf: introHasPdf }
+      : null,
     photos: manifestPhotos,
   };
   const manifestEnc = await encryptBytes(key, Buffer.from(JSON.stringify(manifest), 'utf8'));
