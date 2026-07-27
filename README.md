@@ -51,18 +51,6 @@ something guessable.
    - `file` must match a filename you copied into `source/`.
    - `date` is optional — omit it if you don't want one shown.
 
-## Adding videos
-
-Same idea as photos, but under a top-level `"videos"` array:
-```json
-"videos": [
-  { "file": "trip.mp4", "caption": "Optional caption", "group": "Slideshow" }
-]
-```
-Each distinct `group` name becomes its own tab (a video player, not a photo grid).
-Videos aren't resized or compressed — whatever you put in `source/` is encrypted
-as-is, so keep an eye on file size (GitHub Pages/repos work best under ~100MB per file).
-
 `source/` is git-ignored — it and its contents never get committed or pushed.
 Only the encrypted output in `photos/` does.
 
