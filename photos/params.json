@@ -3,7 +3,7 @@
   "kdf": "PBKDF2",
   "hash": "SHA-256",
   "iterations": 250000,
-  "saltB64": "Fpt7+x0Y2C51U8QqRyHliQ==",
+  "saltB64": "cL9PCCqNsn4QtCFE6MBczA==",
   "cipher": "AES-GCM",
   "keyLength": 256,
   "ivLength": 12

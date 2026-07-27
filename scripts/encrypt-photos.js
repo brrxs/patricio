@@ -54,6 +54,7 @@ them in the order you want them to appear, with a caption for each.
             file: 'example.jpg',
             caption: 'Replace this with your own photo and caption',
             date: '2026-01-01',
+            group: 'Optional tab name, e.g. "Italy" — omit for a single ungrouped tab',
           },
         ],
       },
@@ -74,6 +75,20 @@ function validateContent(content) {
   const errors = [];
   if (typeof content.title !== 'string') errors.push('"title" must be a string');
   if (typeof content.message !== 'string') errors.push('"message" must be a string');
+  if (content.intro !== undefined && content.intro !== null) {
+    if (typeof content.intro !== 'object') {
+      errors.push('"intro" must be an object');
+    } else {
+      if (typeof content.intro.message !== 'string') errors.push('"intro.message" must be a string');
+      if (
+        content.intro.pdf !== undefined &&
+        content.intro.pdf !== null &&
+        typeof content.intro.pdf !== 'string'
+      ) {
+        errors.push('"intro.pdf" must be a string or omitted');
+      }
+    }
+  }
   if (!Array.isArray(content.photos) || content.photos.length === 0) {
     errors.push('"photos" must be a non-empty array');
   } else {
@@ -87,14 +102,18 @@ function validateContent(content) {
       if (p.date !== undefined && p.date !== null && typeof p.date !== 'string') {
         errors.push(`photos[${i}]: "date" must be a string or omitted`);
       }
+      if (p.group !== undefined && p.group !== null && typeof p.group !== 'string') {
+        errors.push(`photos[${i}]: "group" must be a string or omitted`);
+      }
     });
   }
   return errors;
 }
 
 function findMissingFiles(content) {
-  return content.photos
-    .map((p) => p.file)
+  const files = content.photos.map((p) => p.file);
+  if (content.intro && content.intro.pdf) files.push(content.intro.pdf);
+  return files
     .filter((file) => typeof file === 'string' && file)
     .filter((file) => !fs.existsSync(path.join(SOURCE_DIR, file)));
 }
@@ -245,11 +264,25 @@ async function main() {
     fs.writeFileSync(path.join(PHOTOS_DIR, 'thumbs', `${i}.bin`), thumbEnc);
     fs.writeFileSync(path.join(PHOTOS_DIR, 'full', `${i}.bin`), fullEnc);
 
-    manifestPhotos.push({ id: i, caption: p.caption, date: p.date ?? null });
+    manifestPhotos.push({ id: i, caption: p.caption, date: p.date ?? null, group: p.group ?? null });
     console.log(`  encrypted ${i + 1}/${content.photos.length}: ${p.file}`);
   }
 
-  const manifest = { title: content.title, message: content.message, photos: manifestPhotos };
+  let introHasPdf = false;
+  if (content.intro && content.intro.pdf) {
+    const pdfBuf = fs.readFileSync(path.join(SOURCE_DIR, content.intro.pdf));
+    const pdfEnc = await encryptBytes(key, pdfBuf);
+    fs.writeFileSync(path.join(PHOTOS_DIR, 'intro.pdf.bin'), pdfEnc);
+    introHasPdf = true;
+    console.log(`  encrypted intro PDF: ${content.intro.pdf}`);
+  }
+
+  const manifest = {
+    title: content.title,
+    message: content.message,
+    intro: content.intro ? { message: content.intro.message, hasPdf: introHasPdf } : null,
+    photos: manifestPhotos,
+  };
   const manifestEnc = await encryptBytes(key, Buffer.from(JSON.stringify(manifest), 'utf8'));
   fs.writeFileSync(path.join(PHOTOS_DIR, 'manifest.bin'), manifestEnc);
 

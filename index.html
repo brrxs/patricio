@@ -19,12 +19,23 @@
   </form>
 </main>
 
+<main id="intro-screen" class="screen" hidden>
+  <div id="intro-box">
+    <p id="intro-message"></p>
+    <div id="intro-actions">
+      <a id="intro-pdf-link" href="#" hidden>Open the letter</a>
+      <button id="intro-continue-btn" type="button">Continue to the album</button>
+    </div>
+  </div>
+</main>
+
 <main id="gallery-screen" class="screen" hidden>
   <header id="gallery-header">
     <h1 id="album-title"></h1>
     <p id="album-message"></p>
   </header>
-  <section id="grid" class="grid"></section>
+  <nav id="tabs" class="tabs"></nav>
+  <div id="grid-container"></div>
 </main>
 
 <div id="lightbox" class="lightbox" hidden>

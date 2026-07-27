@@ -13,9 +13,15 @@ const keywordInput = document.getElementById('keyword-input');
 const unlockBtn = document.getElementById('unlock-btn');
 const lockError = document.getElementById('lock-error');
 
+const introScreen = document.getElementById('intro-screen');
+const introMessageEl = document.getElementById('intro-message');
+const introPdfLink = document.getElementById('intro-pdf-link');
+const introContinueBtn = document.getElementById('intro-continue-btn');
+
 const albumTitleEl = document.getElementById('album-title');
 const albumMessageEl = document.getElementById('album-message');
-const gridEl = document.getElementById('grid');
+const tabsEl = document.getElementById('tabs');
+const gridContainerEl = document.getElementById('grid-container');
 
 const lightbox = document.getElementById('lightbox');
 const lightboxImg = document.getElementById('lightbox-img');
@@ -27,6 +33,8 @@ const lightboxNext = document.getElementById('lightbox-next');
 
 let derivedKey = null;
 let manifest = null;
+let groups = []; // [{ name, photos: [...] }], in first-seen order
+let activeGroupPhotos = []; // the photo list backing the currently visible tab
 let currentLightboxIndex = -1;
 let currentLightboxUrl = null;
 
@@ -63,13 +71,17 @@ async function decryptToBytes(key, buffer) {
   return new Uint8Array(plain);
 }
 
-async function fetchAndDecryptImage(key, url) {
+async function fetchAndDecryptBlob(key, url, mimeType) {
   const res = await fetch(url);
   if (!res.ok) throw new Error('network');
   const buffer = await res.arrayBuffer();
   const plainBytes = await decryptToBytes(key, buffer);
-  const blob = new Blob([plainBytes], { type: 'image/jpeg' });
+  const blob = new Blob([plainBytes], { type: mimeType });
   return URL.createObjectURL(blob);
+}
+
+function fetchAndDecryptImage(key, url) {
+  return fetchAndDecryptBlob(key, url, 'image/jpeg');
 }
 
 // Small concurrency-capped queue so a big album doesn't fire every
@@ -113,7 +125,12 @@ lockForm.addEventListener('submit', async (e) => {
 
     derivedKey = key;
     manifest = JSON.parse(new TextDecoder().decode(manifestBytes));
-    showGallery();
+
+    if (manifest.intro && (manifest.intro.message || manifest.intro.hasPdf)) {
+      showIntro();
+    } else {
+      showGallery();
+    }
   } catch (err) {
     console.error(err);
     lockError.textContent = "Couldn't load the album. Check your connection and try again.";
@@ -123,6 +140,49 @@ lockForm.addEventListener('submit', async (e) => {
   }
 });
 
+let introPdfUrl = null;
+
+function showIntro() {
+  lockScreen.hidden = true;
+  introScreen.hidden = false;
+
+  introMessageEl.textContent = manifest.intro.message || '';
+  introPdfLink.hidden = !manifest.intro.hasPdf;
+}
+
+introPdfLink.addEventListener('click', async (e) => {
+  e.preventDefault();
+  if (introPdfUrl) {
+    window.open(introPdfUrl, '_blank');
+    return;
+  }
+  const originalText = introPdfLink.textContent;
+  introPdfLink.textContent = 'Loading…';
+  try {
+    introPdfUrl = await fetchAndDecryptBlob(derivedKey, 'photos/intro.pdf.bin', 'application/pdf');
+    introPdfLink.textContent = originalText;
+    window.open(introPdfUrl, '_blank');
+  } catch (err) {
+    console.error('intro pdf failed', err);
+    introPdfLink.textContent = "Couldn't load — try again";
+  }
+});
+
+introContinueBtn.addEventListener('click', () => {
+  introScreen.hidden = true;
+  showGallery();
+});
+
+function groupPhotos(photos) {
+  const byName = new Map();
+  for (const photo of photos) {
+    const name = photo.group || 'Photos';
+    if (!byName.has(name)) byName.set(name, []);
+    byName.get(name).push(photo);
+  }
+  return Array.from(byName, ([name, groupPhotos]) => ({ name, photos: groupPhotos }));
+}
+
 function showGallery() {
   lockScreen.hidden = true;
   galleryScreen.hidden = false;
@@ -130,29 +190,53 @@ function showGallery() {
   albumTitleEl.textContent = manifest.title || '';
   albumMessageEl.textContent = manifest.message || '';
 
-  gridEl.innerHTML = '';
-  const cells = manifest.photos.map((photo) => {
-    const cell = document.createElement('div');
-    cell.className = 'grid-item';
+  groups = groupPhotos(manifest.photos);
 
-    const img = document.createElement('img');
-    img.alt = photo.caption || '';
-    cell.appendChild(img);
+  tabsEl.innerHTML = '';
+  gridContainerEl.innerHTML = '';
+  tabsEl.hidden = groups.length <= 1;
 
-    if (photo.caption) {
-      const caption = document.createElement('div');
-      caption.className = 'grid-caption';
-      caption.textContent = photo.caption;
-      cell.appendChild(caption);
-    }
+  const allCells = [];
 
-    cell.addEventListener('click', () => openLightbox(photo.id));
-    gridEl.appendChild(cell);
-    return { cell, img };
+  groups.forEach((group, groupIndex) => {
+    const tabBtn = document.createElement('button');
+    tabBtn.type = 'button';
+    tabBtn.className = 'tab-btn';
+    tabBtn.textContent = group.name;
+    tabBtn.addEventListener('click', () => selectGroup(groupIndex));
+    tabsEl.appendChild(tabBtn);
+    group.tabBtn = tabBtn;
+
+    const section = document.createElement('section');
+    section.className = 'grid';
+    section.hidden = groupIndex !== 0;
+    gridContainerEl.appendChild(section);
+    group.sectionEl = section;
+
+    group.photos.forEach((photo) => {
+      const cell = document.createElement('div');
+      cell.className = 'grid-item';
+
+      const img = document.createElement('img');
+      img.alt = photo.caption || '';
+      cell.appendChild(img);
+
+      if (photo.caption) {
+        const caption = document.createElement('div');
+        caption.className = 'grid-caption';
+        caption.textContent = photo.caption;
+        cell.appendChild(caption);
+      }
+
+      cell.addEventListener('click', () => openLightbox(group.photos, photo.id));
+      section.appendChild(cell);
+      allCells.push({ cell, img, photo });
+    });
   });
 
-  runWithConcurrency(manifest.photos, 6, async (photo, idx) => {
-    const { cell, img } = cells[idx];
+  selectGroup(0);
+
+  runWithConcurrency(allCells, 6, async ({ cell, img, photo }) => {
     try {
       const url = await fetchAndDecryptImage(derivedKey, `photos/thumbs/${photo.id}.bin`);
       img.src = url;
@@ -164,8 +248,18 @@ function showGallery() {
   });
 }
 
-async function openLightbox(id) {
-  const index = manifest.photos.findIndex((p) => p.id === id);
+function selectGroup(index) {
+  groups.forEach((group, i) => {
+    const active = i === index;
+    group.sectionEl.hidden = !active;
+    group.tabBtn.classList.toggle('active', active);
+    if (active) activeGroupPhotos = group.photos;
+  });
+}
+
+async function openLightbox(groupPhotos, id) {
+  activeGroupPhotos = groupPhotos;
+  const index = groupPhotos.findIndex((p) => p.id === id);
   if (index === -1) return;
   currentLightboxIndex = index;
   lightbox.hidden = false;
@@ -173,14 +267,14 @@ async function openLightbox(id) {
 }
 
 async function showLightboxPhoto(index) {
-  const photo = manifest.photos[index];
+  const photo = activeGroupPhotos[index];
   currentLightboxIndex = index;
 
   lightboxCaption.textContent = photo.caption || '';
   lightboxDate.textContent = photo.date || '';
   lightboxImg.src = '';
   lightboxPrev.disabled = index === 0;
-  lightboxNext.disabled = index === manifest.photos.length - 1;
+  lightboxNext.disabled = index === activeGroupPhotos.length - 1;
 
   try {
     const url = await fetchAndDecryptImage(derivedKey, `photos/full/${photo.id}.bin`);
@@ -210,14 +304,14 @@ lightboxPrev.addEventListener('click', () => {
   if (currentLightboxIndex > 0) showLightboxPhoto(currentLightboxIndex - 1);
 });
 lightboxNext.addEventListener('click', () => {
-  if (currentLightboxIndex < manifest.photos.length - 1) showLightboxPhoto(currentLightboxIndex + 1);
+  if (currentLightboxIndex < activeGroupPhotos.length - 1) showLightboxPhoto(currentLightboxIndex + 1);
 });
 
 document.addEventListener('keydown', (e) => {
   if (lightbox.hidden) return;
   if (e.key === 'Escape') closeLightbox();
   if (e.key === 'ArrowLeft' && currentLightboxIndex > 0) showLightboxPhoto(currentLightboxIndex - 1);
-  if (e.key === 'ArrowRight' && currentLightboxIndex < manifest.photos.length - 1) {
+  if (e.key === 'ArrowRight' && currentLightboxIndex < activeGroupPhotos.length - 1) {
     showLightboxPhoto(currentLightboxIndex + 1);
   }
 });

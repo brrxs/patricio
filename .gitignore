@@ -1,5 +1,6 @@
 node_modules/
 source/
+pdf/
 .DS_Store
 Thumbs.db
 *.log
